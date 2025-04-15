@@ -1,33 +1,33 @@
-# Use official PHP image with Apache
-FROM php:8.2-apache
+FROM php:8.2-fpm
 
-# Install PHP extensions and tools
+# Install needed packages
 RUN apt-get update && apt-get install -y \
-    libzip-dev zip unzip git \
-    && docker-php-ext-install zip pdo pdo_mysql
+    nginx supervisor unzip curl zip libzip-dev libpng-dev libonig-dev \
+    && docker-php-ext-install pdo pdo_mysql zip
 
-# Enable Apache rewrite module
-RUN a2enmod rewrite
-
-# Set working directory
-WORKDIR /var/www/html
-
-# Copy project files
-COPY . /var/www/html
-
-# Change document root to /public
-ENV APACHE_DOCUMENT_ROOT /var/www/html/public
-
-# Update Apache config
-RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/000-default.conf && \
-    sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}/../!g' /etc/apache2/apache2.conf
-
-# Set permissions
-RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 755 /var/www/html
-
-# Copy Composer from official image
+# Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
+# Set working directory
+WORKDIR /var/www
+
+# Copy application
+COPY . .
+
 # Install PHP dependencies
-RUN composer install --no-dev --optimize-autoloader --working-dir=/var/www/html
+RUN composer install --no-dev --optimize-autoloader
+
+# Copy configs
+COPY nginx.conf /etc/nginx/sites-available/default
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Enable Nginx site config
+RUN ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
+
+# Permissions
+RUN chown -R www-data:www-data /var/www
+
+EXPOSE 80
+
+# Start supervisord
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
